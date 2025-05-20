@@ -1,0 +1,92 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Pacotes
+
+```{r}
+if (!require("curl")) install.packages("curl")
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("archive")) install.packages("archive")
+```
+
+# Função(ões)
+
+Essa função baixa os arquivos, descompacta e, por fim, remove o zip
+```{r}
+baixar_censo <- function(ano, ...) {
+  # url de armazenamento dos dados
+  url <- glue::glue("https://download.inep.gov.br/dados_abertos/microdados_censo_escolar_{ano}.zip")
+  
+  # não tem só a base :( vem dicionário junto e laialaia, paciência
+  
+  caminho_zip <- file.path("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados",
+                       paste0("microdados_censo_escolar_", ano, ".zip"))
+  pasta <- file.path("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados",
+                     paste0("microdados_censo_escolar_", ano)) # onde vai ficar armazenado depois 
+  
+  curl::curl_download(url, destfile = caminho_zip)
+  
+  archive::archive_extract(caminho_zip, dir = pasta) # descompactar
+  
+  file.remove(caminho_zip) # remove, vamo salvar espaço colega
+  }
+```
+
+# Download
+
+```{r}
+walk(2009:2019, baixar_censo)
+```
+
+# Base 
+
+```{r}
+censo_2009 <- read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/microdados_censo_escolar_2009/microdados_ed_basica_2009/dados/microdados_ed_basica_2009.csv")
+```
+
+```{r}
+censo_2009 %>% 
+  select(
+    c(
+      # Identificação
+      1:13, ## geralzão
+      16, 
+      287 # fundamental
+      
+      # subíndices
+      # Infra de serviços básicos (ib)
+      ## 1- Local de funcionamento do prédio escolar
+      ## 2- Existência de água filtrada
+      ## 3- Existência de água rede publica
+      ## 4- Existência de energia rede publica
+      ## 5- Existência de esgoto rede publica
+      ## 6- Existência de alimentação
+      ## 7- Existência de lixo coleta periódica
+      ## 8- Acesso à internet
+      
+      # Infra física (if)
+      ## 1- Existência de sala de professor
+      ## 2- Existência de laboratório de informática
+      ## 3- Existência de laboratório de ciências
+      ## 4- Existência de quadra de esportes
+      ## 5- Existência de cozinha
+      ## 6- Existência de biblioteca
+      ## 7- Existência de parque infantil
+      ## 8- Existência de banheiro
+      
+      # Disponibilidade de Equipamentos (de)
+      ## 1- Existência de equipamento de TV
+      ## 2- Existência de equipamento de copiadora
+      ## 3- Existência de equipamento de impressora
+      ## 4- Existência de computador
+      
+      # Capacitação de Discentes (cd)
+      ## 1- Existência de EJA- escolas com Educação de Jovens e Adultos
+      ## 2- Existência de escolas com Educação Profissional
+    )
+  ) %>%
+  filter(TP_DEPENDENCIA != 4)
+```
+
