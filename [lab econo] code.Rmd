@@ -50,13 +50,13 @@ censo_2009 <- read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab 
 censo_2009 %>% 
   select(
     c(
-      # Identificação
-      1:13, ## geralzão
+      # Identificacao
+      1:13, ## geral
       16, 
-      287 # fundamental
+      287, # fundamental
       
-      # subíndices
-      # Infra de serviços básicos (ib)
+      # subindices
+      # Infra de servicos basicos (ib)
       ## 1- Local de funcionamento do prédio escolar
       ## 2- Existência de água filtrada
       ## 3- Existência de água rede publica
@@ -66,25 +66,28 @@ censo_2009 %>%
       ## 7- Existência de lixo coleta periódica
       ## 8- Acesso à internet
       
-      # Infra física (if)
-      ## 1- Existência de sala de professor
-      ## 2- Existência de laboratório de informática
-      ## 3- Existência de laboratório de ciências
-      ## 4- Existência de quadra de esportes
-      ## 5- Existência de cozinha
-      ## 6- Existência de biblioteca
-      ## 7- Existência de parque infantil
-      ## 8- Existência de banheiro
+      # Infra Fisica (if)
       
+      128, ## Existencia de banheiro
+      134, ## Existencia de biblioteca
+      136, ## Existencia de cozinha
+      140, ## Existencia de lab de ciencias
+      141, ## Existencia de lab de informatica
+      145, ## Existencia de parque infantil
+      147, ## Existencia de quadra de esportes
+      159, ## Existencia de sala de professor
+
+
       # Disponibilidade de Equipamentos (de)
       ## 1- Existência de equipamento de TV
       ## 2- Existência de equipamento de copiadora
       ## 3- Existência de equipamento de impressora
       ## 4- Existência de computador
       
-      # Capacitação de Discentes (cd)
-      ## 1- Existência de EJA- escolas com Educação de Jovens e Adultos
-      ## 2- Existência de escolas com Educação Profissional
+      # Capacitacao de Discentes (cd)
+      
+      344, ## Existencia de escolas com Educacao Profissional
+      346  ## Existencia de EJA
     )
   ) %>%
   filter(TP_DEPENDENCIA != 4)
