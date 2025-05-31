@@ -44,52 +44,118 @@ walk(2009:2019, baixar_censo)
 
 ```{r}
 censo_2009 <- read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/microdados_censo_escolar_2009/microdados_ed_basica_2009/dados/microdados_ed_basica_2009.csv")
+
+censo_2019 <- read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/microdados_censo_escolar_2019/microdados_ed_basica_2019/dados/microdados_ed_basica_2019.csv")
 ```
 
 ```{r}
-censo_2009 %>% 
-  select(
-    c(
-      # Identificacao
-      1:13, ## geral
-      16, 
-      287, # fundamental
-      
-      # subindices
-      # Infra de servicos basicos (ib)
-      ## 1- Local de funcionamento do prédio escolar
-      ## 2- Existência de água filtrada
-      ## 3- Existência de água rede publica
-      ## 4- Existência de energia rede publica
-      ## 5- Existência de esgoto rede publica
-      ## 6- Existência de alimentação
-      ## 7- Existência de lixo coleta periódica
-      ## 8- Acesso à internet
-      
-      # Infra Fisica (if)
-      
-      128, ## Existencia de banheiro
-      134, ## Existencia de biblioteca
-      136, ## Existencia de cozinha
-      140, ## Existencia de lab de ciencias
-      141, ## Existencia de lab de informatica
-      145, ## Existencia de parque infantil
-      147, ## Existencia de quadra de esportes
-      159, ## Existencia de sala de professor
+censo_2009 <- censo_2009 %>%
 
+# padronização para 2009
+  transmute(
+    NO_ENTIDADE,
+    CO_MUNICIPIO,
+    ANO = 2009,
+    
+    # Infraestrutura básica
+    ib_agua_filtrada = as.numeric(IN_AGUA_FILTRADA == 1),
+    ib_agua_rede = as.numeric(IN_AGUA_REDE_PUBLICA == 1),
+    ib_energia = as.numeric(IN_ENERGIA_REDE_PUBLICA == 1),
+    ib_esgoto = as.numeric(IN_ESGOTO_REDE_PUBLICA == 1),
+    ib_alimentacao = as.numeric(IN_ALIMENTACAO == 1),
+    ib_lixo = as.numeric(IN_LIXO_SERVICO_COLETA == 1),
+    ib_internet = as.numeric(IN_INTERNET == 1),
 
-      # Disponibilidade de Equipamentos (de)
-      ## 1- Existência de equipamento de TV
-      ## 2- Existência de equipamento de copiadora
-      ## 3- Existência de equipamento de impressora
-      ## 4- Existência de computador
-      
-      # Capacitacao de Discentes (cd)
-      
-      344, ## Existencia de escolas com Educacao Profissional
-      346  ## Existencia de EJA
-    )
+    # Infraestrutura física
+    fi_banheiro = as.numeric(IN_BANHEIRO == 1),
+    fi_biblioteca = as.numeric(IN_BIBLIOTECA == 1),
+    fi_cozinha = as.numeric(IN_COZINHA == 1),
+    fi_lab_ciencias = as.numeric(IN_LABORATORIO_CIENCIAS == 1),
+    fi_lab_info == 1),
+    fi_quadra = as.numeric(IN_QUADRA_ESPORTES == 1),
+    fi_sala_prof = as.numeric(IN_SALA_PROFESSOR == 1),
+
+    de_tv = as.numeric(IN_EQUIP_TV == 1),
+    de_copiadora = as.numeric(IN_EQUIP_COPIADORA == 1),
+    de_impressora = as.numeric(IN_EQUIP_IMPRESSORA == 1),
+    de_computador = as.numeric(IN_EQUIP_COMPUTADOR == 1)
+  ) %>%
+  filter(TP_DEPENDENCIA != 4)
+
+censo_2019 <- censo_2019 %>%
+
+# padronização para 2019
+  transmute(
+    NO_ENTIDADE,
+    CO_MUNICIPIO,
+    ANO = 2009,
+    
+    # Infraestrutura básica
+    ib_agua_filtrada = as.numeric(IN_AGUA_FILTRADA == 1),
+    ib_agua_rede = as.numeric(IN_AGUA_REDE_PUBLICA == 1),
+    ib_energia = as.numeric(IN_ENERGIA_REDE_PUBLICA == 1),
+    ib_esgoto = as.numeric(IN_ESGOTO_REDE_PUBLICA == 1),
+    ib_alimentacao = as.numeric(IN_ALIMENTACAO == 1),
+    ib_lixo = as.numeric(IN_LIXO_SERVICO_COLETA == 1),
+    ib_internet = as.numeric(IN_INTERNET == 1),
+
+    # Infraestrutura física
+    fi_banheiro = as.numeric(IN_BANHEIRO == 1),
+    fi_biblioteca = as.numeric(IN_BIBLIOTECA == 1),
+    fi_cozinha = as.numeric(IN_COZINHA == 1),
+    fi_lab_ciencias = as.numeric(IN_LABORATORIO_CIENCIAS == 1),
+    fi_lab_info == 1),
+    fi_quadra = as.numeric(IN_QUADRA_ESPORTES == 1),
+    fi_sala_prof = as.numeric(IN_SALA_PROFESSOR == 1),
+
+    de_tv = as.numeric(IN_EQUIP_TV == 1),
+    de_copiadora = as.numeric(IN_EQUIP_COPIADORA == 1),
+    de_impressora = as.numeric(IN_EQUIP_IMPRESSORA == 1),
+    de_computador = as.numeric(IN_EQUIP_COMPUTADOR == 1)
   ) %>%
   filter(TP_DEPENDENCIA != 4)
 ```
 
+```{r}
+# junta as bases e iee
+infra_escolas <- bind_rows(censo_2009, censo_2019) %>%
+  rowwise() %>%
+  mutate(
+    ib = mean(c_across(starts_with("ib_")), na.rm = TRUE),
+    fi = mean(c_across(starts_with("fi_")), na.rm = TRUE),
+    de = mean(c_across(starts_with("de_")), na.rm = TRUE),
+    iee = mean(c(ib, fi, de), na.rm = TRUE)
+  ) %>%
+  ungroup()
+```
+
+# Descritiva 
+
+```{r}
+# sumário por município e ano
+infra_municipio <- infra_escolas %>%
+  group_by(CO_MUNICIPIO, ANO) %>%
+  summarise(
+    n_escolas = n(),
+    media_ib = mean(ib, na.rm = TRUE),
+    media_fi = mean(fi, na.rm = TRUE),
+    media_de = mean(de, na.rm = TRUE),
+    media_iee = mean(iee, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+# Mapa 
+
+```{r}
+br_mun <- read_municipality(code_muni = "all", year = 2019)
+
+mapa_iee <- br_mun %>%
+  left_join(infra_municipio, by = c("code_muni" = "COD_MUNICIPIO"))
+
+# mapa! 
+ggplot(mapa_iee) +
+  geom_sf(aes(fill = iee), color = NA) +
+  scale_fill_viridis_c(option = "C", na.value = "white", name = "IEE") +
+  theme_minimal()
+```
