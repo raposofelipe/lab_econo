@@ -1,0 +1,90 @@
+---
+title: "Despesa Municipal"
+output: html_notebook
+---
+
+##### ajeitando a base para as despesas federais liquidadas com educacao (2004-08 e 2014-18) #####
+
+rm(list = ls()) 
+
+library(readxl)
+library(dplyr)
+library(lubridate)
+library(labelled)
+library(tidyr)
+
+# determinando o diretorio
+
+diretorio <- "C:\\Users\\feref\\Downloads\\InvPub_lab_de_econo\\d_liq_lab_de_econo"
+setwd(diretorio)
+
+# puxando a base 
+
+d_nom <- read_excel("base_despesa_total_educ_mun.xlsx")
+
+# preparando o IGP-DI
+igp <- read_excel("igp_di_gv.xlsx") %>%
+  mutate(
+    Data = my(Data),
+    ano = year(Data)
+  )
+
+# media anual do IGP-DI, ja que nao se sabe quando as despesas foram liquidadas
+igp_anual <- igp %>%
+  group_by(ano) %>%
+  summarise(igp_medio = mean(IGP_DI, na.rm = TRUE))
+
+# indice base (dez/2019)
+igp_base_2019 <- igp %>%
+  filter(Data == ymd("2019-12-01")) %>%
+  pull(IGP_DI)
+
+# deflacionando os valores nominais
+
+d_long <- d_nom %>%
+  pivot_longer(
+    cols = `2003`:`2020`,
+    names_to = "ano",
+    values_to = "d_nominal"
+  ) %>%
+  mutate(ano = as.integer(ano))  
+
+d_deflacionado <- d_long %>%
+  left_join(igp_anual, by = "ano") %>%
+  mutate(
+    d_defl = d_nominal * (igp_base_2019 / igp_medio),  # deflacionado a preços de 2019
+    d_defl_mi = d_defl / 1e6  # em milhoes de RS
+  )
+
+# somando as despesas para o período 2004-2008 (referente a 2009) e 2014-2018 (referente a 2019)
+
+d_agregado_2009 <- d_deflacionado %>%
+  filter(ano %in% 2004:2008) %>%
+  group_by(`Cod.IBGE`, Município, UF, `POP_2019`, Regiao) %>%
+  summarise(
+    d_defl = sum(d_defl, na.rm = TRUE),
+    d_defl_mi = sum(d_defl_mi, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(ano_agregado = 2009)
+
+d_agregado_2019 <- d_deflacionado %>%
+  filter(ano %in% 2014:2018) %>%
+  group_by(`Cod.IBGE`, Município, UF, `POP_2019`, Regiao) %>%
+  summarise(
+    d_defl = sum(d_defl, na.rm = TRUE),
+    d_defl_mi = sum(d_defl_mi, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(ano_agregado = 2019)
+
+# unindo as bases
+
+educ_municipal <- bind_rows(d_agregado_2009, d_agregado_2019) %>%
+  rename(code_muni = `Cod.IBGE`) %>%
+  select(-POP_2019)
+
+
+# salvando em rda para subir no GitHub
+
+save(educ_municipal, igp, file = paste0(diretorio, "/Ipub.Rda"))
