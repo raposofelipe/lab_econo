@@ -1,0 +1,54 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+# Análise Descritiva
+
+## IIE
+
+```{r}
+ggplot()+
+  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+               aes(x = iie, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
+  theme_minimal()
+```
+
+## IDEB
+
+```{r}
+ggplot()+
+  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+               aes(x = ideb, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
+  theme_minimal()
+```
+
+## Mapas
+
+```{r}
+# mapa iie
+ggplot()+
+  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = iie), colour = NA)+
+  geom_sf(data = estados, fill = NA)+
+  scale_fill_viridis_c(option = "G")+ # mako 
+  theme_minimal()+
+  facet_wrap(~NU_ANO_CENSO)
+```
+
+```{r}
+# mapa ideb
+ggplot()+
+  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = ideb), colour = NA)+
+  geom_sf(data = estados, fill = NA)+
+  scale_fill_viridis_c(option = "A", na.value = NA)+ # mako 
+  theme_minimal()+ 
+  facet_wrap(~NU_ANO_CENSO )
+```
+
+# Regressão 
+
+p(melhora ideb) = b.(aumento real investimento) + d.(iie) + ef
+
+```{r}
+
+```
+
