@@ -1,0 +1,228 @@
+---
+title: "Lab Econo: Base"
+output: html_notebook
+---
+
+# Pacotes
+
+```{r}
+if (!require("curl")) install.packages("curl")
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("archive")) install.packages("archive")
+if (!require("geobr")) install.packages("geobr")
+if (!require("sidrar")) install.packages("sidrar")
+```
+
+# Função(ões)
+
+```{r}
+baixar_censo <- function(ano, ...) {
+  # url de armazenamento dos dados
+  url <- glue::glue("https://download.inep.gov.br/dados_abertos/microdados_censo_escolar_{ano}.zip")
+  
+  # não tem só a base :( vem dicionário junto e laialaia, paciência
+  
+  caminho_zip <- file.path(getwd(),
+                       paste0("microdados_censo_escolar_", ano, ".zip"))
+  pasta <- file.path(getwd(),
+                     paste0("microdados_censo_escolar_", ano)) # onde vai ficar
+  
+  curl::curl_download(url, destfile = caminho_zip)
+  
+  archive::archive_extract(caminho_zip, dir = pasta) # descompactar
+  
+  file.remove(caminho_zip) # remove, vamo salvar espaço colega
+  }
+```
+
+# Download
+
+```{r}
+walk(c(2014, 2019), baixar_censo)
+
+# coordenadas: município e estados
+municipios <- read_municipality()
+estados <- read_state()
+```
+
+# Base 
+
+```{r}
+df_censo <- read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/microdados_censo_escolar_2013/microdados_ed_basica_2013/dados/microdados_ed_basica_2013.csv") 
+
+df_censo <- df_censo %>% 
+  rbind(read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/microdados_censo_escolar_2019/microdados_ed_basica_2019/dados/microdados_ed_basica_2019.csv"))
+```
+
+```{r}
+df_censo <- df_censo %>% 
+  select(
+    c(
+      # Identificação
+      1:16, ## geralzão
+      27, # situação de funcionamente, se aberta ou não
+      288, # se fundamental 
+
+      # Subíndices
+      
+      # Infra de serviços básicos (ib)
+      50, ## 1- Local de funcionamento do prédio escolar
+      63, ## 2- Existência de água filtrada, para 2019 passa aser a 64
+      65, ## 3- Existência de água rede publica
+      70, ## 4- Existência de energia rede publica
+      76, ## 5- Existência de esgoto rede publica
+      228, ## 6- Existência de alimentação
+      81, ## 7- Existência de lixo coleta periódica
+      188, ## 8- Acesso à internet
+      
+      # Infra física (fi)
+      96:98, ## Existencia de banheiro
+      104, ## Existencia de biblioteca
+      106, ## Existencia de cozinha
+      110, ## Existencia de lab de ciencias
+      111, ## Existencia de lab de informatica
+      114, ## Existencia de parque infantil
+      116, ## Existencia de quadra de esportes
+      126, ## Existencia de sala de professor
+      
+      # Disponibilidade de Equipamentos (de)
+      161, ## 1- Existência de equipamento de TV
+      152, ## 2- Existência de equipamento de copiadora
+      153, ## 3- Existência de equipamento de impressora
+      151, ## 4- Existência de computador
+      
+      # número de matrículas no fund ai
+      304
+      )
+  ) %>%
+  filter(TP_DEPENDENCIA != 4, # pegando as municipais
+         TP_SITUACAO_FUNCIONAMENTO == 1, # se tá funcionando ou não 
+         IN_FUND_AI == 1
+         ) 
+```
+
+## IIE
+
+```{r}
+iie_escolas <- df_censo %>% 
+  mutate(IN_BANHEIRO = case_when(
+    NU_ANO_CENSO == 2013 & (IN_BANHEIRO_DENTRO_PREDIO == 1 | IN_BANHEIRO_FORA_PREDIO == 1) ~ 1,
+    NU_ANO_CENSO == 2019 ~ IN_BANHEIRO,
+    .default = 0
+  )) %>% 
+  group_by(CO_ENTIDADE, NU_ANO_CENSO, CO_MUNICIPIO) %>% 
+  mutate(ib = as.numeric(sum(IN_LOCAL_FUNC_PREDIO_ESCOLAR, IN_AGUA_FILTRADA, IN_AGUA_REDE_PUBLICA,
+                             IN_ENERGIA_REDE_PUBLICA, IN_ESGOTO_REDE_PUBLICA, IN_ALIMENTACAO, 
+                             IN_LIXO_SERVICO_COLETA, IN_INTERNET)/8), 
+         fi = as.numeric(sum(IN_BANHEIRO, IN_BIBLIOTECA, IN_COZINHA, IN_LABORATORIO_CIENCIAS,
+                             IN_LABORATORIO_INFORMATICA,IN_PARQUE_INFANTIL, IN_QUADRA_ESPORTES, IN_SALA_PROFESSOR)/8), 
+         de = as.numeric(sum(IN_EQUIP_TV, IN_EQUIP_COPIADORA, IN_COMPUTADOR, IN_EQUIP_IMPRESSORA)/4)
+         ) %>% 
+  summarise(iie = mean(c(ib, fi, de), na.rm = T), .groups = "keep") %>% 
+  left_join(df_censo %>% select(CO_ENTIDADE, QT_MAT_FUND_AI, NU_ANO_CENSO), by = c("CO_ENTIDADE", "NU_ANO_CENSO"))
+```
+
+```{r}
+# base município
+iie_muni <- iie_escolas %>% 
+  group_by(CO_MUNICIPIO, NU_ANO_CENSO) %>% 
+  mutate(peso = QT_MAT_FUND_AI/sum(QT_MAT_FUND_AI)) %>% ungroup() %>% 
+  summarise(iie = weighted.mean(iie, w = peso),
+            .by = c(CO_MUNICIPIO, NU_ANO_CENSO)) %>%
+  left_join(municipios, by = join_by("CO_MUNICIPIO" == "code_muni"))
+```
+
+## IDEB
+
+```{r}
+ideb_muni <- readxl::read_excel(
+  "C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/ideb/ideb_ai_mun.xlsx") %>% 
+  pivot_longer(cols = starts_with("ideb_ai_"),
+             names_to = "NU_ANO_CENSO",
+             values_to = "ideb") %>% 
+  filter(rede == "publica", NU_ANO_CENSO %in% c("ideb_ai_2013", "ideb_ai_2019")) %>% 
+  mutate(NU_ANO_CENSO = str_sub(NU_ANO_CENSO, start = 9, end = 12) %>% as.numeric(), 
+         ideb = as.numeric(ideb)) %>% 
+  rename(CO_MUNICIPIO = `codigo do municipio`) %>% 
+  select(-municipio)
+```
+
+```{r}
+educacao_muni <- iie_muni %>% 
+  left_join(ideb_muni, by = c("NU_ANO_CENSO", "CO_MUNICIPIO"))
+```
+
+## Investimento Público
+
+```{r}
+municipios_modi <- municipios %>% 
+  mutate(
+    name_muni = name_muni %>%
+      str_to_lower() %>%         
+      stringi::stri_trans_general("Latin-ASCII") %>% 
+      str_remove_all("\\p{P}") %>%          
+      str_remove_all("\\s+")            
+  )
+```
+
+```{r}
+educacao_muni <- readxl::read_excel("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/Base Final Educação - Investimentos - SIOPE - Procedimento Completo - Imputar Missings e Outliers.xlsx") %>% 
+  group_by(Cod.IBGE) %>% 
+  mutate(`2013` = sum(`2008`,`2009`, `2010`, `2011`, `2012`), `2019` = sum(`2014`, `2015`, `2016`, `2017`, `2018`), 
+         Município = Município %>% str_to_lower() %>% 
+           stringi::stri_trans_general("Latin-ASCII") %>% 
+           str_remove_all("\\p{P}") %>% 
+           str_remove_all("\\s+") ) %>% 
+  left_join(municipios_modi %>% select(code_muni, name_muni, abbrev_state), 
+            join_by("Município" == "name_muni", "UF" == "abbrev_state")) %>% ungroup() %>% 
+  select(code_muni, `2013`, `2019`) %>% 
+  pivot_longer(-1, names_to = "NU_ANO_CENSO", values_to = "inv_pub_educ") %>% 
+  mutate(NU_ANO_CENSO = as.numeric(NU_ANO_CENSO)) %>% 
+  right_join(educacao_muni, join_by("code_muni" == "CO_MUNICIPIO", "NU_ANO_CENSO"))
+```
+
+## Despesa por aluno 
+
+Repetindo o mesmo para despesa
+
+```{r}
+educacao_muni <- readxl::read_excel("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/Base Final Despesa Total com Educação - Base Única - SIOPE e Finbra - Procedimento Completo - Imputar Missings e Outliers.xlsx") %>% 
+  select(`2013`, `2019`, `Município`, UF) %>% 
+  mutate(Município = Município %>% str_to_lower() %>% 
+           stringi::stri_trans_general("Latin-ASCII") %>% 
+           str_remove_all("\\p{P}")) %>% 
+  left_join(municipios_modi %>% select(code_muni, name_muni, abbrev_state), 
+            join_by("Município" == "name_muni", "UF" == "abbrev_state")) %>% ungroup() %>% 
+  select(code_muni, `2013`, `2019`) %>% 
+  pivot_longer(-1, names_to = "NU_ANO_CENSO", values_to = "desp_educ") %>% 
+  mutate(NU_ANO_CENSO = as.numeric(NU_ANO_CENSO)) %>% 
+  right_join(educacao_muni, join_by("code_muni", "NU_ANO_CENSO"))
+```
+
+## PIB municipal 
+
+```{r}
+pib_municipal <- get_sidra(
+  x = 5938,
+  variable = 37,            
+  period = c("2013", "2019"),          
+  geo = "City" 
+) %>% 
+  rename(code_muni = `Município (Código)`, pib_muni_mil = Valor, NU_ANO_CENSO = `Ano (Código)`) %>% 
+  mutate(NU_ANO_CENSO = as.numeric(NU_ANO_CENSO), 
+         code_muni = as.numeric(code_muni))
+```
+
+```{r}
+educacao_muni <- educacao_muni %>% 
+  left_join(pib_municipal %>% select(code_muni, pib_muni_mil, NU_ANO_CENSO), 
+            by = c("code_muni", "NU_ANO_CENSO"))
+```
+
+## Finalizações
+
+```{r}
+# o que usaremos para a próxima etapa
+rm(list = ls()[!ls() %in% c(educacao_muni, municipios, estados)])
+```
+
