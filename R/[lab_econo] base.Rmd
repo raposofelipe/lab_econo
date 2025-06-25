@@ -83,8 +83,9 @@ mqo <- lm(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc, #+ ln_desp_pc,
 ```
 
 ```{r}
-# heterocedasticidade
+# teste de white
 skedastic::white(mqo)
+# REJEITA-SE A HIPÓTESE NULA: NÃO HÁ HOMOCEDASTICIDADE 
 
 # matriz ROBUSTA de cov-var
 vcov_white <- vcovHC(mqo, type = "HC0")
@@ -96,6 +97,7 @@ se_white <- sqrt(diag(vcov_white))
 ```{r}
 modelsummary::modelsummary(
   mqo, 
+  vcov = vcov_white,
   statistic = "conf.int",     # intervalos de confiança
   coef_map = c("ln_iie" = "Log(IIE)",
                "ln_inv_pub" = "Log(Investimento Público)",
