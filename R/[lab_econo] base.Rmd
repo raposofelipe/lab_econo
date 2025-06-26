@@ -195,7 +195,8 @@ educacao_muni <- readxl::read_excel("C:/Users/rapos/Graduacao - UnB/Econometria/
   select(`2013`, `2019`, `Município`, UF) %>% 
   mutate(Município = Município %>% str_to_lower() %>% 
            stringi::stri_trans_general("Latin-ASCII") %>% 
-           str_remove_all("\\p{P}")) %>% 
+           str_remove_all("\\p{P}") %>% 
+           str_remove_all("\\s+") ) %>% 
   left_join(municipios_modi %>% select(code_muni, name_muni, abbrev_state), 
             join_by("Município" == "name_muni", "UF" == "abbrev_state")) %>% ungroup() %>% 
   select(code_muni, `2013`, `2019`) %>% 
@@ -283,9 +284,3 @@ educacao_muni <- readxl::read_excel("C:\\Users\\rapos\\Graduacao - UnB\\Economet
   select(code_muni, ano, everything())
 ```
 
-## Finalizações
-
-```{r}
-# o que usaremos para a próxima etapa
-# rm(list = ls()[!ls() %in% c(educacao_muni, municipios, estados)])
-```
