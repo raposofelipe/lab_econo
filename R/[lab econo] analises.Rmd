@@ -2,27 +2,27 @@
 title: "R Notebook"
 output: html_notebook
 ---
+
+# Pacotes 
+
+```{r}
+if (!require("quantreg")) install.packages("quantreg")
+if (!require("stargazer")) install.packages("stargazer")
+if (!require("skedastic")) install.packages("skedastic")
+if (!require("lmtest")) install.packages("lmtest")
+if (!require("sandwich")) install.packages("sandwich")
+```
+
 # Análise Descritiva
 
 ## IIE
 
 ```{r}
 ggplot()+
-  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
-               aes(x = iie, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
+  geom_density(data = educacao_muni %>% mutate(ano = as.character(ano)),
+               aes(x = iie, group = ano, fill = ano), alpha = 0.5)+
   theme_minimal()
 ```
-
-## IDEB
-
-```{r}
-ggplot()+
-  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
-               aes(x = ideb, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
-  theme_minimal()
-```
-
-## Mapas
 
 ```{r}
 # mapa iie
@@ -31,7 +31,16 @@ ggplot()+
   geom_sf(data = estados, fill = NA)+
   scale_fill_viridis_c(option = "G")+ # mako 
   theme_minimal()+
-  facet_wrap(~NU_ANO_CENSO)
+  facet_wrap(~ano)
+```
+
+## IDEB
+
+```{r}
+ggplot()+
+  geom_density(data = educacao_muni %>% mutate(ano = as.character(ano)),
+               aes(x = ideb, group = ano, fill = ano), alpha = 0.5)+
+  theme_minimal()
 ```
 
 ```{r}
@@ -41,14 +50,94 @@ ggplot()+
   geom_sf(data = estados, fill = NA)+
   scale_fill_viridis_c(option = "A", na.value = NA)+ # mako 
   theme_minimal()+ 
-  facet_wrap(~NU_ANO_CENSO )
+  facet_wrap(~ano)
 ```
 
-# Regressão 
+# Regressão quantílica
 
-p(melhora ideb) = b.(aumento real investimento) + d.(iie) + ef
+## Logaritimizando  
+```{r}
+educacao_qr <- educacao_muni %>%
+  mutate(
+    ln_ideb = log(ideb),
+    ln_iie = log(iie),
+    ln_desp_pc = log(desp_educ_pc_defl),
+    ln_inv_pub = log(inv_pub_educ_defl),
+    ln_pib_pc = log(pib_muni_pc)
+  ) %>%
+  filter(
+    # ln de zero é indeterminado!!!!!
+    is.finite(ln_ideb),
+    is.finite(ln_iie),
+    is.finite(ln_desp_pc),
+    is.finite(ln_inv_pub),
+    is.finite(ln_pib_pc)
+  )
+```
+
+## MQO 
 
 ```{r}
+mqo <- lm(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc,
+          data = educacao_qr)
+```
 
+```{r}
+# teste de white
+skedastic::white(mqo)
+# REJEITA-SE A HIPÓTESE NULA: NÃO HÁ HOMOCEDASTICIDADE 
+
+# matriz ROBUSTA de cov-var
+vcov_white <- vcovHC(mqo, type = "HC0")
+
+# se robusto
+se_white <- sqrt(diag(vcov_white))
+```
+
+```{r}
+modelsummary::modelsummary(
+  mqo, 
+  vcov = vcov_white,
+  statistic = "conf.int",     # intervalos de confiança
+coef_map = c("(Intercept)" = "Intercepto",
+               "ln_iie" = "Log(IIE)",
+               "ln_inv_pub" = "Log(Investimento)",
+               "ln_desp_pc" = "Log(Despesa)",
+               "ln_pib_pc" = "Log(PIB per capita)"),
+  gof_omit = "AIC|BIC|Log.Lik", 
+  stars = TRUE,                
+  output = "html"          
+)
+```
+
+
+## Quantílica
+
+```{r}
+modelo_q10 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, 
+                 tau = 0.1, data = educacao_qr)
+modelo_q25 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, tau = 0.25, data = educacao_qr)
+modelo_q50 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, tau = 0.50, data = educacao_qr)
+modelo_q75 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, tau = 0.75, data = educacao_qr)
+modelo_q90 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc+ ln_desp_pc, tau = 0.9, data = educacao_qr)
+```
+
+```{r}
+modelsummary::modelsummary(
+  list("Quantil 10%" = modelo_q10, 
+       "Quantil 25%" = modelo_q25,
+       "Quantil 50%" = modelo_q50,
+       "Quantil 75%" = modelo_q75, 
+       "Quantil 90%" = modelo_q90),
+  statistic = "conf.int",     # intervalos de confiança
+  coef_map = c("(Intercept)" = "Intercepto",
+               "ln_iie" = "Log(IIE)",
+               "ln_inv_pub" = "Log(Investimento)",
+               "ln_desp_pc" = "Log(Despesa)",
+               "ln_pib_pc" = "Log(PIB per capita)"),
+  gof_omit = "AIC|BIC|Log.Lik", 
+  stars = TRUE,                
+  output = "html"          
+)
 ```
 
