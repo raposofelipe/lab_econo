@@ -1,0 +1,461 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+# Análise Descritiva
+
+```{r}
+
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("sysfonts")) install.packages("sysfonts")
+if (!require("showtext")) install.packages("showtext")
+if (!require("scales")) install.packages("scales")
+if (!require("knitr")) install.packages("knitr")
+
+```
+
+```{r}
+load("C:\\Users\\feref\\OneDrive\\Faculdade\\Lab de Econo\\docs_lab_econo\\educacao_muni.rda")
+```
+
+
+```{r}
+# fonte similar a times new roman
+
+font_add_google("Tinos", family = "tnr")
+showtext_auto()
+```
+
+## IIE
+
+```{r}
+
+grafico_iie <- ggplot() +
+  geom_density(data = educacao_muni %>%
+                 mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+               aes(x = iie, group = NU_ANO_CENSO, fill = NU_ANO_CENSO),
+               alpha = 0.5, color = NA) +
+  scale_fill_brewer(palette = "Set2", name = "Ano do Censo") +
+  labs(
+    title = "Distribuição do Índice de Infraestrutura Escolar (IIE)",
+    subtitle = "Comparação entre diferentes anos do Censo Escolar",
+    x = "Índice de Infraestrutura Escolar (IIE)",
+    y = "Densidade"
+  ) +
+  theme_minimal(base_size = 12, base_family = "tnr") +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10)),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+# Salvar como PDF
+ggsave(
+  filename = "grafico_iie.pdf",
+  plot = grafico_iie,
+  device = cairo_pdf,     # Necessário para renderizar fontes corretamente com showtext
+  width = 8,              # em polegadas (~20cm)
+  height = 6,             # em polegadas (~15cm)
+  dpi = 300               # resolução (não influencia PDF, mas boa prática)
+)
+
+```
+
+
+```{r}
+#ggplot()+
+#  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+#               aes(x = iie, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
+#  theme_minimal()
+```
+
+## IDEB
+
+```{r}
+#ggplot()+
+#  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+#               aes(x = ideb, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
+#  theme_minimal()
+```
+
+```{r}
+grafico_ideb <- ggplot() +
+  geom_density(data = educacao_muni %>%
+                 mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+               aes(x = ideb, group = NU_ANO_CENSO, fill = NU_ANO_CENSO),
+               alpha = 0.5, color = NA) +
+  scale_fill_brewer(palette = "Set2", name = "Ano do Censo") +
+  labs(
+    title = "Distribuição do Índice de Desenvolvimento da Educação Básica (IDEB)",
+    subtitle = "Comparação entre diferentes anos do Censo Escolar",
+    x = "IDEB",
+    y = "Densidade"
+  ) +
+  theme_minimal(base_size = 12, base_family = "tnr") +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10)),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+# como PDF
+ggsave(
+  filename = "grafico_ideb.pdf",
+  plot = grafico_ideb,
+  device = cairo_pdf,     
+  width = 8,              
+  height = 6,           
+  dpi = 300               
+)
+
+```
+
+## Mapas
+
+```{r}
+# mapa iie
+
+#ggplot()+
+#  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = iie), colour = NA)+
+#  geom_sf(data = estados, fill = NA)+
+#  scale_fill_viridis_c(option = "G")+ # mako 
+#  theme_minimal()+
+#  facet_wrap(~NU_ANO_CENSO)
+```
+
+```{r}
+# melhorando a visualização
+mapa_iie <- ggplot() +
+  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = iie), colour = NA) +
+  geom_sf(data = estados, fill = NA) +
+  scale_fill_viridis_c(option = "G", name = "IIE") +
+  facet_wrap(~NU_ANO_CENSO) +
+  theme_minimal(base_family = "tnr", base_size = 14) +  
+  theme(
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    strip.text = element_text(size = 13, face = "bold"),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+
+# como PDF 
+ggsave(
+  filename = "mapa_iie.pdf",
+  plot = mapa_iie,
+  device = cairo_pdf,
+  width = 12,    
+  height = 8,    
+  dpi = 300
+)
+
+
+```
+
+
+```{r}
+# mapa ideb
+
+#ggplot()+
+#  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = ideb), colour = NA)+
+#  geom_sf(data = estados, fill = NA)+
+#  scale_fill_viridis_c(option = "A", na.value = NA)+ # mako 
+#  theme_minimal()+ 
+#  facet_wrap(~NU_ANO_CENSO )
+```
+
+```{r}
+# melhorando a visualização
+
+mapa_ideb <- ggplot() +
+  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = ideb), colour = NA) +
+  geom_sf(data = estados, fill = NA) +
+  scale_fill_viridis_c(option = "A", na.value = NA, name = "IDEB") +
+  facet_wrap(~NU_ANO_CENSO) +
+  theme_minimal(base_family = "tnr", base_size = 14) +
+  theme(
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    strip.text = element_text(size = 13, face = "bold"),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+
+# salvando em pdf
+
+ggsave(
+  filename = "mapa_ideb.pdf",
+  plot = mapa_ideb,
+  device = cairo_pdf,
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+```
+
+## Tabelas (IIE, IDEB e Ipub)
+
+```{r}
+# iie
+
+iie_2013 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2013,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios = n(),
+    media_iie_13 = mean(iie, na.rm = TRUE),
+    mediana_iie_13 = median(iie, na.rm = TRUE),
+    desvio_iie_13 = sd(iie, na.rm = TRUE))
+
+iie_2019 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2019,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    media_iie_19 = mean(iie, na.rm = TRUE),
+    mediana_iie_19 = median(iie, na.rm = TRUE),
+    desvio_iie_19 = sd(iie, na.rm = TRUE))
+
+
+iie_comparativo <- left_join(iie_2013, iie_2019, by = "uf") %>%
+  filter(!is.na(uf))
+
+# em word
+
+iie_word <- iie_comparativo %>%
+  mutate(
+    `Nº Municípios` = n_municipios,
+    `Média IIE 2013` = label_comma(decimal.mark = ",", accuracy = 0.01)(media_iie_13),
+    `Mediana IIE 2013` = label_comma(decimal.mark = ",", accuracy = 0.01)(mediana_iie_13),
+    `Desvio Padrão 2013` = label_comma(decimal.mark = ",", accuracy = 0.001)(desvio_iie_13),
+    `Média IIE 2019` = label_comma(decimal.mark = ",", accuracy = 0.01)(media_iie_19),
+    `Mediana IIE 2019` = label_comma(decimal.mark = ",", accuracy = 0.01)(mediana_iie_19),
+    `Desvio Padrão 2019` = label_comma(decimal.mark = ",", accuracy = 0.001)(desvio_iie_19)
+  ) %>%
+  rename(UF = uf) %>%
+  select(UF,
+         `Nº Municípios`,
+         `Média IIE 2013`, `Mediana IIE 2013`, `Desvio Padrão 2013`,
+         `Média IIE 2019`, `Mediana IIE 2019`, `Desvio Padrão 2019`)
+
+kable(iie_word, format = "pandoc", caption = "Tabela 2 – Comparativo IIE por estado (2013 e 2019)", align = "lcccccccc")
+
+
+```
+
+
+```{r}
+
+# ideb
+
+ideb_2013 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2013,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  filter(NU_ANO_CENSO == 2013) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_13 = n(),
+    media_ideb_13 = mean(ideb, na.rm = TRUE),
+    mediana_ideb_13 = median(ideb, na.rm = TRUE),
+    desvio_ideb_13 = sd(ideb, na.rm = TRUE))
+
+ideb_2019 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2019,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  filter(NU_ANO_CENSO == 2019) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_19 = n(),
+    media_ideb_19 = mean(ideb, na.rm = TRUE),
+    mediana_ideb_19 = median(ideb, na.rm = TRUE),
+    desvio_ideb_19 = sd(ideb, na.rm = TRUE))
+
+
+ideb_comparativo <- left_join(ideb_2013, ideb_2019, by = "uf") %>%
+  filter(!is.na(uf))
+
+# em word
+
+ideb_word <- ideb_comparativo %>%
+  mutate(
+    `Média IDEB 2013` = label_comma(decimal.mark = ",", accuracy = 0.1)(media_ideb_13),
+    `Mediana IDEB 2013` = label_comma(decimal.mark = ",", accuracy = 0.1)(mediana_ideb_13),
+    `Desvio Padrão 2013` = label_comma(decimal.mark = ",", accuracy = 0.01)(desvio_ideb_13),
+    `Nº Municípios 2013` = n_municipios_13,
+    `Média IDEB 2019` = label_comma(decimal.mark = ",", accuracy = 0.1)(media_ideb_19),
+    `Mediana IDEB 2019` = label_comma(decimal.mark = ",", accuracy = 0.1)(mediana_ideb_19),
+    `Desvio Padrão 2019` = label_comma(decimal.mark = ",", accuracy = 0.01)(desvio_ideb_19),
+    `Nº Municípios 2019` = n_municipios_19
+  ) %>%
+  rename(UF = uf) %>%
+  select(UF,
+         `Média IDEB 2013`, `Mediana IDEB 2013`, `Desvio Padrão 2013`, `Nº Municípios 2013`,
+         `Média IDEB 2019`, `Mediana IDEB 2019`, `Desvio Padrão 2019`, `Nº Municípios 2019`)
+
+kable(ideb_word, format = "pandoc", caption = "Tabela 2 – Comparativo dos indicadores IDEB por UF (2013 e 2019)", align = "lcccccccc")
+
+
+
+```
+
+
+```{r}
+#Ipub
+
+# 2013
+ipub_2013_uf <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2013,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_13 = n(),
+    media_ipub_defl_13 = mean(inv_pub_educ_defl, na.rm = TRUE),
+    mediana_ipub_defl_13 = median(inv_pub_educ_defl, na.rm = TRUE),
+    desvio_ipub_defl_13 = sd(inv_pub_educ_defl, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 2019
+ipub_2019_uf <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2019,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_19 = n(),
+    media_ipub_defl_19 = mean(inv_pub_educ_defl, na.rm = TRUE),
+    mediana_ipub_defl_19 = median(inv_pub_educ_defl, na.rm = TRUE),
+    desvio_ipub_defl_19 = sd(inv_pub_educ_defl, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# União das tabelas
+ipub_comparativo_uf <- left_join(ipub_2013_uf, ipub_2019_uf, by = "uf")
+
+ipub_word_uf <- ipub_comparativo_uf %>%
+  mutate(
+    `Média 2013 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(media_ipub_defl_13),
+    `Mediana 2013 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(mediana_ipub_defl_13),
+    `Desvio Padrão 2013 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(desvio_ipub_defl_13),
+    `Nº Municípios 2013` = n_municipios_13,
+    `Média 2019 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(media_ipub_defl_19),
+    `Mediana 2019 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(mediana_ipub_defl_19),
+    `Desvio Padrão 2019 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(desvio_ipub_defl_19),
+    `Nº Municípios 2019` = n_municipios_19
+  ) %>%
+  rename(UF = uf) %>%
+  select(UF,
+         `Média 2013 (R$)`, `Mediana 2013 (R$)`, `Desvio Padrão 2013 (R$)`, `Nº Municípios 2013`,
+         `Média 2019 (R$)`, `Mediana 2019 (R$)`, `Desvio Padrão 2019 (R$)`, `Nº Municípios 2019`)
+
+
+kable(ipub_word_uf,
+      format = "pandoc",
+      caption = "Tabela 3 – Investimento público em educação deflacionado por estado (2013 e 2019) - em milhares",
+      align = "lcccccccc")
+
+
+```
+
+# correlação por quartil
+
+```{r}
+educacao_muni_teste <- educacao_muni %>%
+  mutate(
+    quartil_iie = ntile(iie, 4)  # divide os dados em 4 grupos de mesmo tamanho
+  )
+
+```
+
+```{r}
+boxplot_ideb_iie = ggplot(educacao_muni_teste, aes(x = as.factor(quartil_iie), y = ideb)) +
+  geom_boxplot(fill = "#69b3a2", alpha = 0.6) +
+  labs(
+    x = "Quartil do IIE",
+    y = "IDEB",
+    title = "Distribuição do IDEB por quartil do IIE"
+  ) +
+  theme_minimal(base_size = 12, base_family = "tnr") +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10)),
+    legend.position = "top",
+    panel.grid.minor = element_blank()
+  )
+
+# como PDF
+ggsave(
+  filename = "boxplot.pdf",
+  plot = boxplot_ideb_iie,
+  device = cairo_pdf,     
+  width = 8,              
+  height = 6,           
+  dpi = 300               
+)
+
+```
+
+```{r}
+educacao_muni_teste %>%
+  group_by(quartil_iie) %>%
+  summarise(
+    media_ideb = mean(ideb, na.rm = TRUE),
+    mediana_ideb = median(ideb, na.rm = TRUE),
+    sd_ideb = sd(ideb, na.rm = TRUE),
+    n = n()
+  )
+
+```
+
+```{r}
+educacao_muni_teste %>%
+  group_by(quartil_iie) %>%
+  summarise(
+    cor_ideb_iie = cor(iie, ideb, use = "complete.obs")
+  )
+
+```
+
+
+```{r}
+rm(list = ls()[!ls() %in% c("educacao_muni", "municipios", "estados")])
+
+```
+
+
+# Regressão 
+
+p(melhora ideb) = b.(aumento real investimento) + d.(iie) + ef
+
+```{r}
+
+```
+
