@@ -1,0 +1,826 @@
+---
+title: "Lab Econo: Base"
+output: html_notebook
+---
+
+# Pacotes
+
+```{r}
+if (!require("curl")) install.packages("curl")
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("archive")) install.packages("archive")
+if (!require("geobr")) install.packages("geobr")
+if (!require("sidrar")) install.packages("sidrar")
+if (!require("lubridate")) install.packages("lubridate")
+if (!require("quantreg")) install.packages("quantreg")
+if (!require("skedastic")) install.packages("skedastic")
+if (!require("lmtest")) install.packages("lmtest")
+if (!require("sandwich")) install.packages("sandwich")
+```
+
+# Função(ões)
+
+```{r}
+baixar_censo <- function(ano, ...) {
+  # url de armazenamento dos dados
+  url <- glue::glue("https://download.inep.gov.br/dados_abertos/microdados_censo_escolar_{ano}.zip")
+  
+  # não tem só a base :( vem dicionário junto e laialaia, paciência
+  
+  caminho_zip <- file.path(getwd(),
+                       paste0("microdados_censo_escolar_", ano, ".zip"))
+  pasta <- file.path(getwd(),
+                     paste0("microdados_censo_escolar_", ano)) # onde vai ficar
+  
+  curl::curl_download(url, destfile = caminho_zip)
+  
+  archive::archive_extract(caminho_zip, dir = pasta) # descompactar
+  
+  file.remove(caminho_zip) # remove, vamo salvar espaço colega
+  }
+```
+
+# Download
+
+```{r}
+walk(c(2013, 2019), baixar_censo)
+```
+
+```{r}
+# coordenadas: município e estados
+municipios <- read_municipality()
+estados <- read_state()
+```
+
+# Base 
+
+```{r}
+df_censo <- read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/microdados_censo_escolar_2019/microdados_ed_basica_2019/dados/microdados_ed_basica_2019.csv") 
+
+df_censo <- df_censo %>% 
+  rbind(read.csv2("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/microdados_censo_escolar_2013/microdados_ed_basica_2013/dados/microdados_ed_basica_2013.csv"))
+```
+
+```{r}
+df_censo <- df_censo %>% 
+  select(
+    c(
+      # Identificação
+      1:16, ## geralzão
+      27, # situação de funcionamento, se aberta ou não
+      288, # se fundamental 
+
+      # Subíndices
+      
+      # Infra de serviços básicos (ib)
+      50, ## 1- Local de funcionamento do prédio escolar
+      63, ## 2- Existência de água filtrada, para 2019 passa a ser a 64
+      65, ## 3- Existência de água rede publica
+      70, ## 4- Existência de energia rede publica
+      76, ## 5- Existência de esgoto rede publica
+      228, ## 6- Existência de alimentação
+      81, ## 7- Existência de lixo coleta periódica
+      188, ## 8- Acesso à internet
+      
+      # Infra física (fi)
+      96:98, ## Existencia de banheiro
+      104, ## Existencia de biblioteca
+      106, ## Existencia de cozinha
+      110, ## Existencia de lab de ciencias
+      111, ## Existencia de lab de informatica
+      114, ## Existencia de parque infantil
+      116, ## Existencia de quadra de esportes
+      126, ## Existencia de sala de professor
+      
+      # Disponibilidade de Equipamentos (de)
+      161, ## 1- Existência de equipamento de TV
+      152, ## 2- Existência de equipamento de copiadora
+      153, ## 3- Existência de equipamento de impressora
+      151, ## 4- Existência de computador
+      
+      # número de matrículas no fund ai
+      304
+      )
+  ) %>%
+  filter(TP_DEPENDENCIA != 4, # pegando as municipais
+         TP_SITUACAO_FUNCIONAMENTO == 1, # se tá funcionando ou não 
+         IN_FUND_AI == 1
+         ) 
+```
+
+## IIE
+
+```{r}
+iie_escolas <- df_censo %>% 
+  mutate(IN_BANHEIRO = case_when(
+    NU_ANO_CENSO == 2013 & (IN_BANHEIRO_DENTRO_PREDIO == 1 | IN_BANHEIRO_FORA_PREDIO == 1) ~ 1,
+    NU_ANO_CENSO == 2019 ~ IN_BANHEIRO,
+    .default = 0
+  )) %>% 
+  group_by(CO_ENTIDADE, NU_ANO_CENSO, CO_MUNICIPIO) %>% 
+  mutate(ib = as.numeric(sum(IN_LOCAL_FUNC_PREDIO_ESCOLAR, IN_AGUA_FILTRADA, IN_AGUA_REDE_PUBLICA,
+                             IN_ENERGIA_REDE_PUBLICA, IN_ESGOTO_REDE_PUBLICA, IN_ALIMENTACAO, 
+                             IN_LIXO_SERVICO_COLETA, IN_INTERNET)/8), 
+         fi = as.numeric(sum(IN_BANHEIRO, IN_BIBLIOTECA, IN_COZINHA, IN_LABORATORIO_CIENCIAS,
+                             IN_LABORATORIO_INFORMATICA,IN_PARQUE_INFANTIL, IN_QUADRA_ESPORTES, IN_SALA_PROFESSOR)/8), 
+         de = as.numeric(sum(IN_EQUIP_TV, IN_EQUIP_COPIADORA, IN_COMPUTADOR, IN_EQUIP_IMPRESSORA)/4)
+         ) %>% 
+  summarise(iie = mean(c(ib, fi, de), na.rm = T), .groups = "keep") %>% 
+  left_join(df_censo %>% select(CO_ENTIDADE, QT_MAT_FUND_AI, NU_ANO_CENSO), by = c("CO_ENTIDADE", "NU_ANO_CENSO"))
+```
+
+```{r}
+# base município
+iie_muni <- iie_escolas %>% 
+  group_by(CO_MUNICIPIO, NU_ANO_CENSO) %>% 
+  mutate(peso = QT_MAT_FUND_AI/sum(QT_MAT_FUND_AI)) %>% ungroup() %>% 
+  summarise(
+  iie = weighted.mean(iie, w = peso),
+  QT_MAT_FUND_AI = sum(QT_MAT_FUND_AI, na.rm = TRUE),
+  .by = c(CO_MUNICIPIO, NU_ANO_CENSO)
+)%>%
+  left_join(municipios, by = join_by("CO_MUNICIPIO" == "code_muni"))
+```
+
+## IDEB
+
+```{r}
+ideb_muni <- readxl::read_excel("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/ideb/ideb_ai_mun.xlsx") %>% 
+  pivot_longer(cols = starts_with("ideb_ai_"),
+             names_to = "NU_ANO_CENSO",
+             values_to = "ideb") %>% 
+  filter(rede == "publica", NU_ANO_CENSO %in% c("ideb_ai_2013", "ideb_ai_2019")) %>% 
+  mutate(NU_ANO_CENSO = str_sub(NU_ANO_CENSO, start = 9, end = 12) %>% as.numeric(), 
+         ideb = as.numeric(ideb)) %>% 
+  rename(CO_MUNICIPIO = `codigo do municipio`) %>% 
+  select(-municipio)
+```
+
+```{r}
+educacao_muni <- iie_muni %>% 
+  left_join(ideb_muni, by = c("NU_ANO_CENSO", "CO_MUNICIPIO"))
+```
+
+## Investimento Público
+
+```{r}
+municipios_modi <- municipios %>% 
+  mutate(
+    name_muni = name_muni %>%
+      str_to_lower() %>%         
+      stringi::stri_trans_general("Latin-ASCII") %>% 
+      str_remove_all("\\p{P}") %>%          
+      str_remove_all("\\s+")            
+  )
+```
+
+```{r}
+educacao_muni <- readxl::read_excel("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/Base Final Educação - Investimentos - SIOPE - Procedimento Completo - Imputar Missings e Outliers.xlsx") %>% 
+  group_by(Cod.IBGE) %>% 
+  mutate(`2013` = sum(`2008`,`2009`, `2010`, `2011`, `2012`), `2019` = sum(`2014`, `2015`, `2016`, `2017`, `2018`), 
+         Município = Município %>% str_to_lower() %>% 
+           stringi::stri_trans_general("Latin-ASCII") %>% 
+           str_remove_all("\\p{P}") %>% 
+           str_remove_all("\\s+") ) %>% 
+  left_join(municipios_modi %>% select(code_muni, name_muni, abbrev_state), 
+            join_by("Município" == "name_muni", "UF" == "abbrev_state")) %>% ungroup() %>% 
+  select(code_muni, `2013`, `2019`) %>% 
+  pivot_longer(-1, names_to = "NU_ANO_CENSO", values_to = "inv_pub_educ") %>% 
+  mutate(NU_ANO_CENSO = as.numeric(NU_ANO_CENSO)) %>% 
+  right_join(educacao_muni, join_by("code_muni" == "CO_MUNICIPIO", "NU_ANO_CENSO"))
+```
+
+## Despesa por aluno 
+
+Repetindo o mesmo para despesa
+
+```{r}
+educacao_muni <- readxl::read_excel("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/Base Final Despesa Total com Educação - Base Única - SIOPE e Finbra - Procedimento Completo - Imputar Missings e Outliers.xlsx") %>% 
+  select(`2013`, `2019`, `Município`, UF) %>% 
+  mutate(Município = Município %>% str_to_lower() %>% 
+           stringi::stri_trans_general("Latin-ASCII") %>% 
+           str_remove_all("\\p{P}") %>% 
+           str_remove_all("\\s+") ) %>% 
+  left_join(municipios_modi %>% select(code_muni, name_muni, abbrev_state), 
+            join_by("Município" == "name_muni", "UF" == "abbrev_state")) %>% ungroup() %>% 
+  select(code_muni, `2013`, `2019`) %>% 
+  pivot_longer(-1, names_to = "NU_ANO_CENSO", values_to = "desp_educ") %>% 
+  mutate(NU_ANO_CENSO = as.numeric(NU_ANO_CENSO)) %>% 
+  right_join(educacao_muni, join_by("code_muni", "NU_ANO_CENSO"))
+```
+
+```{r}
+educacao_muni <- educacao_muni %>%
+  mutate(
+    desp_educ_pc = ifelse(QT_MAT_FUND_AI > 0, desp_educ / QT_MAT_FUND_AI, NA)
+  )
+```
+
+# Deflacionando (IGP-DI/FGV)
+
+```{r}
+
+igp <- readxl::read_excel("C:/Users/rapos/Graduacao - UnB/Econometria/Zoghbi/[lab econo] dados/igp_di_gv.xlsx") %>%
+  mutate(
+    Data = my(Data),        
+    ano = year(Data)        
+  )
+
+igp_anual <- igp %>%
+  group_by(ano) %>%
+  summarise(igp_medio = mean(IGP_DI, na.rm = TRUE))
+
+igp_base_2019 <- igp_anual %>%
+  filter(ano == 2019) %>%
+  pull(igp_medio)
+
+# valor médio do IGP-DI para o ano de 2019 (base de deflação)
+igp_anual <- igp_anual %>%
+  mutate(
+    igp_base_2019 = igp_base_2019,
+    fator_deflator = igp_base_2019 / igp_medio
+  )
+
+# Junta com a base principal e deflaciona os valores (em milhares)
+educacao_muni <- educacao_muni %>%
+  left_join(igp_anual, by = c("NU_ANO_CENSO" = "ano")) %>%
+  mutate(
+    desp_educ_defl = (desp_educ * fator_deflator) / 1000,
+    desp_educ_pc_defl = (desp_educ_pc * fator_deflator) / 1000,
+    inv_pub_educ_defl = (inv_pub_educ * fator_deflator) / 1000
+  )
+
+
+```
+
+
+## PIB municipal 
+
+```{r}
+pib_municipal <- get_sidra(
+  x = 5938,
+  variable = 37,            
+  period = c("2013", "2019"),          
+  geo = "City" 
+) %>% 
+  rename(code_muni = `Município (Código)`, pib_muni_mil = Valor, NU_ANO_CENSO = `Ano (Código)`) %>% 
+  mutate(NU_ANO_CENSO = as.numeric(NU_ANO_CENSO), 
+         code_muni = as.numeric(code_muni))
+```
+
+```{r}
+educacao_muni <- educacao_muni %>% 
+  left_join(pib_municipal %>% select(code_muni, pib_muni_mil, NU_ANO_CENSO), 
+            by = c("code_muni", "NU_ANO_CENSO"))
+```
+
+
+## Pop municipal 
+
+```{r}
+educacao_muni <- readxl::read_excel("C:\\Users\\rapos\\Graduacao - UnB\\Econometria\\Zoghbi\\[lab econo] dados\\estimativa_2013_dou_xls.xls", skip = 2) %>% 
+  mutate(ano = 2013) %>% 
+  rbind(readxl::read_excel("C:\\Users\\rapos\\Graduacao - UnB\\Econometria\\Zoghbi\\[lab econo] dados\\estimativa_dou_2019.xls", sheet = 2, skip = 1) %>% mutate(ano = 2019)) %>% 
+  mutate(code_muni = as.numeric(paste0(`COD. UF`, `COD. MUNIC`))) %>% 
+  select(`POPULAÇÃO ESTIMADA`, code_muni, ano) %>% 
+  right_join(educacao_muni, by = join_by("code_muni", "ano" == "NU_ANO_CENSO")) %>% 
+  mutate(pib_muni_pc = pib_muni_mil/as.numeric(`POPULAÇÃO ESTIMADA`)) %>% 
+  select(code_muni, ano, everything())
+```
+
+# Exportando
+
+```{r}
+saveRDS(educacao_muni %>% select(-geom) %>% as_tibble(), file = "[lab_econo] df.RDS")
+```
+
+# Análise Descritiva
+
+```{r}
+# fonte similar a times new roman
+
+font_add_google("Tinos", family = "tnr")
+showtext_auto()
+```
+
+## IIE
+
+```{r}
+
+grafico_iie <- ggplot() +
+  geom_density(data = educacao_muni %>%
+                 mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+               aes(x = iie, group = NU_ANO_CENSO, fill = NU_ANO_CENSO),
+               alpha = 0.5, color = NA) +
+  scale_fill_brewer(palette = "Set2", name = "Ano do Censo") +
+  labs(
+    title = "Distribuição do Índice de Infraestrutura Escolar (IIE)",
+    subtitle = "Comparação entre diferentes anos do Censo Escolar",
+    x = "Índice de Infraestrutura Escolar (IIE)",
+    y = "Densidade"
+  ) +
+  theme_minimal(base_size = 12, base_family = "tnr") +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10)),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+# Salvar como PDF
+ggsave(
+  filename = "grafico_iie.pdf",
+  plot = grafico_iie,
+  device = cairo_pdf,     # Necessário para renderizar fontes corretamente com showtext
+  width = 8,              # em polegadas (~20cm)
+  height = 6,             # em polegadas (~15cm)
+  dpi = 300               # resolução (não influencia PDF, mas boa prática)
+)
+
+```
+
+
+```{r}
+#ggplot()+
+#  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+#               aes(x = iie, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
+#  theme_minimal()
+```
+
+## IDEB
+
+```{r}
+#ggplot()+
+#  geom_density(data = educacao_muni %>% mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+#               aes(x = ideb, group = NU_ANO_CENSO, fill = NU_ANO_CENSO), alpha = 0.5)+
+#  theme_minimal()
+```
+
+```{r}
+grafico_ideb <- ggplot() +
+  geom_density(data = educacao_muni %>%
+                 mutate(NU_ANO_CENSO = as.character(NU_ANO_CENSO)),
+               aes(x = ideb, group = NU_ANO_CENSO, fill = NU_ANO_CENSO),
+               alpha = 0.5, color = NA) +
+  scale_fill_brewer(palette = "Set2", name = "Ano do Censo") +
+  labs(
+    title = "Distribuição do Índice de Desenvolvimento da Educação Básica (IDEB)",
+    subtitle = "Comparação entre diferentes anos do Censo Escolar",
+    x = "IDEB",
+    y = "Densidade"
+  ) +
+  theme_minimal(base_size = 12, base_family = "tnr") +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10)),
+    legend.position = "top",
+    legend.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+# como PDF
+ggsave(
+  filename = "grafico_ideb.pdf",
+  plot = grafico_ideb,
+  device = cairo_pdf,     
+  width = 8,              
+  height = 6,           
+  dpi = 300               
+)
+
+```
+
+## Mapas
+
+```{r}
+# mapa iie
+
+#ggplot()+
+#  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = iie), colour = NA)+
+#  geom_sf(data = estados, fill = NA)+
+#  scale_fill_viridis_c(option = "G")+ # mako 
+#  theme_minimal()+
+#  facet_wrap(~NU_ANO_CENSO)
+```
+
+```{r}
+# melhorando a visualização
+mapa_iie <- ggplot() +
+  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = iie), colour = NA) +
+  geom_sf(data = estados, fill = NA) +
+  scale_fill_viridis_c(option = "G", name = "IIE") +
+  facet_wrap(~NU_ANO_CENSO) +
+  theme_minimal(base_family = "tnr", base_size = 14) +  
+  theme(
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    strip.text = element_text(size = 13, face = "bold"),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+
+# como PDF 
+ggsave(
+  filename = "mapa_iie.pdf",
+  plot = mapa_iie,
+  device = cairo_pdf,
+  width = 12,    
+  height = 8,    
+  dpi = 300
+)
+
+
+```
+
+
+```{r}
+# mapa ideb
+
+#ggplot()+
+#  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = ideb), colour = NA)+
+#  geom_sf(data = estados, fill = NA)+
+#  scale_fill_viridis_c(option = "A", na.value = NA)+ # mako 
+#  theme_minimal()+ 
+#  facet_wrap(~NU_ANO_CENSO )
+```
+
+```{r}
+# melhorando a visualização
+
+mapa_ideb <- ggplot() +
+  geom_sf(data = educacao_muni %>% sf::st_as_sf(), aes(fill = ideb), colour = NA) +
+  geom_sf(data = estados, fill = NA) +
+  scale_fill_viridis_c(option = "A", na.value = NA, name = "IDEB") +
+  facet_wrap(~NU_ANO_CENSO) +
+  theme_minimal(base_family = "tnr", base_size = 14) +
+  theme(
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12),
+    strip.text = element_text(size = 13, face = "bold"),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank()
+  )
+
+# salvando em pdf
+
+ggsave(
+  filename = "mapa_ideb.pdf",
+  plot = mapa_ideb,
+  device = cairo_pdf,
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
+```
+
+## Tabelas (IIE, IDEB e Ipub)
+
+```{r}
+# iie
+
+iie_2013 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2013,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios = n(),
+    media_iie_13 = mean(iie, na.rm = TRUE),
+    mediana_iie_13 = median(iie, na.rm = TRUE),
+    desvio_iie_13 = sd(iie, na.rm = TRUE))
+
+iie_2019 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2019,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    media_iie_19 = mean(iie, na.rm = TRUE),
+    mediana_iie_19 = median(iie, na.rm = TRUE),
+    desvio_iie_19 = sd(iie, na.rm = TRUE))
+
+
+iie_comparativo <- left_join(iie_2013, iie_2019, by = "uf") %>%
+  filter(!is.na(uf))
+
+# em word
+
+iie_word <- iie_comparativo %>%
+  mutate(
+    `Nº Municípios` = n_municipios,
+    `Média IIE 2013` = label_comma(decimal.mark = ",", accuracy = 0.01)(media_iie_13),
+    `Mediana IIE 2013` = label_comma(decimal.mark = ",", accuracy = 0.01)(mediana_iie_13),
+    `Desvio Padrão 2013` = label_comma(decimal.mark = ",", accuracy = 0.001)(desvio_iie_13),
+    `Média IIE 2019` = label_comma(decimal.mark = ",", accuracy = 0.01)(media_iie_19),
+    `Mediana IIE 2019` = label_comma(decimal.mark = ",", accuracy = 0.01)(mediana_iie_19),
+    `Desvio Padrão 2019` = label_comma(decimal.mark = ",", accuracy = 0.001)(desvio_iie_19)
+  ) %>%
+  rename(UF = uf) %>%
+  select(UF,
+         `Nº Municípios`,
+         `Média IIE 2013`, `Mediana IIE 2013`, `Desvio Padrão 2013`,
+         `Média IIE 2019`, `Mediana IIE 2019`, `Desvio Padrão 2019`)
+
+kable(iie_word, format = "pandoc", caption = "Tabela 2 – Comparativo IIE por estado (2013 e 2019)", align = "lcccccccc")
+
+
+```
+
+
+```{r}
+
+# ideb
+
+ideb_2013 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2013,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  filter(NU_ANO_CENSO == 2013) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_13 = n(),
+    media_ideb_13 = mean(ideb, na.rm = TRUE),
+    mediana_ideb_13 = median(ideb, na.rm = TRUE),
+    desvio_ideb_13 = sd(ideb, na.rm = TRUE))
+
+ideb_2019 <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2019,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  filter(NU_ANO_CENSO == 2019) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_19 = n(),
+    media_ideb_19 = mean(ideb, na.rm = TRUE),
+    mediana_ideb_19 = median(ideb, na.rm = TRUE),
+    desvio_ideb_19 = sd(ideb, na.rm = TRUE))
+
+
+ideb_comparativo <- left_join(ideb_2013, ideb_2019, by = "uf") %>%
+  filter(!is.na(uf))
+
+# em word
+
+ideb_word <- ideb_comparativo %>%
+  mutate(
+    `Média IDEB 2013` = label_comma(decimal.mark = ",", accuracy = 0.1)(media_ideb_13),
+    `Mediana IDEB 2013` = label_comma(decimal.mark = ",", accuracy = 0.1)(mediana_ideb_13),
+    `Desvio Padrão 2013` = label_comma(decimal.mark = ",", accuracy = 0.01)(desvio_ideb_13),
+    `Nº Municípios 2013` = n_municipios_13,
+    `Média IDEB 2019` = label_comma(decimal.mark = ",", accuracy = 0.1)(media_ideb_19),
+    `Mediana IDEB 2019` = label_comma(decimal.mark = ",", accuracy = 0.1)(mediana_ideb_19),
+    `Desvio Padrão 2019` = label_comma(decimal.mark = ",", accuracy = 0.01)(desvio_ideb_19),
+    `Nº Municípios 2019` = n_municipios_19
+  ) %>%
+  rename(UF = uf) %>%
+  select(UF,
+         `Média IDEB 2013`, `Mediana IDEB 2013`, `Desvio Padrão 2013`, `Nº Municípios 2013`,
+         `Média IDEB 2019`, `Mediana IDEB 2019`, `Desvio Padrão 2019`, `Nº Municípios 2019`)
+
+kable(ideb_word, format = "pandoc", caption = "Tabela 2 – Comparativo dos indicadores IDEB por UF (2013 e 2019)", align = "lcccccccc")
+
+
+
+```
+
+
+```{r}
+#Ipub
+
+# 2013
+ipub_2013_uf <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2013,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_13 = n(),
+    media_ipub_defl_13 = mean(inv_pub_educ_defl, na.rm = TRUE),
+    mediana_ipub_defl_13 = median(inv_pub_educ_defl, na.rm = TRUE),
+    desvio_ipub_defl_13 = sd(inv_pub_educ_defl, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 2019
+ipub_2019_uf <- educacao_muni %>%
+  filter(
+    NU_ANO_CENSO == 2019,
+    !is.na(uf),
+    uf != "DF"
+  ) %>%
+  group_by(uf) %>%
+  summarise(
+    n_municipios_19 = n(),
+    media_ipub_defl_19 = mean(inv_pub_educ_defl, na.rm = TRUE),
+    mediana_ipub_defl_19 = median(inv_pub_educ_defl, na.rm = TRUE),
+    desvio_ipub_defl_19 = sd(inv_pub_educ_defl, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# União das tabelas
+ipub_comparativo_uf <- left_join(ipub_2013_uf, ipub_2019_uf, by = "uf")
+
+ipub_word_uf <- ipub_comparativo_uf %>%
+  mutate(
+    `Média 2013 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(media_ipub_defl_13),
+    `Mediana 2013 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(mediana_ipub_defl_13),
+    `Desvio Padrão 2013 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(desvio_ipub_defl_13),
+    `Nº Municípios 2013` = n_municipios_13,
+    `Média 2019 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(media_ipub_defl_19),
+    `Mediana 2019 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(mediana_ipub_defl_19),
+    `Desvio Padrão 2019 (R$)` = label_currency(decimal.mark = ",", big.mark = ".", accuracy = 1)(desvio_ipub_defl_19),
+    `Nº Municípios 2019` = n_municipios_19
+  ) %>%
+  rename(UF = uf) %>%
+  select(UF,
+         `Média 2013 (R$)`, `Mediana 2013 (R$)`, `Desvio Padrão 2013 (R$)`, `Nº Municípios 2013`,
+         `Média 2019 (R$)`, `Mediana 2019 (R$)`, `Desvio Padrão 2019 (R$)`, `Nº Municípios 2019`)
+
+
+kable(ipub_word_uf,
+      format = "pandoc",
+      caption = "Tabela 3 – Investimento público em educação deflacionado por estado (2013 e 2019) - em milhares",
+      align = "lcccccccc")
+
+
+```
+
+# correlação por quartil
+
+```{r}
+educacao_muni_teste <- educacao_muni %>%
+  mutate(
+    quartil_iie = ntile(iie, 4)  # divide os dados em 4 grupos de mesmo tamanho
+  )
+
+```
+
+```{r}
+boxplot_ideb_iie = ggplot(educacao_muni_teste, aes(x = as.factor(quartil_iie), y = ideb)) +
+  geom_boxplot(fill = "#69b3a2", alpha = 0.6) +
+  labs(
+    x = "Quartil do IIE",
+    y = "IDEB",
+    title = "Distribuição do IDEB por quartil do IIE"
+  ) +
+  theme_minimal(base_size = 12, base_family = "tnr") +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12, margin = margin(b = 10)),
+    legend.position = "top",
+    panel.grid.minor = element_blank()
+  )
+
+# como PDF
+ggsave(
+  filename = "boxplot.pdf",
+  plot = boxplot_ideb_iie,
+  device = cairo_pdf,     
+  width = 8,              
+  height = 6,           
+  dpi = 300               
+)
+
+```
+
+```{r}
+educacao_muni_teste %>%
+  group_by(quartil_iie) %>%
+  summarise(
+    media_ideb = mean(ideb, na.rm = TRUE),
+    mediana_ideb = median(ideb, na.rm = TRUE),
+    sd_ideb = sd(ideb, na.rm = TRUE),
+    n = n()
+  )
+
+```
+
+```{r}
+educacao_muni_teste %>%
+  group_by(quartil_iie) %>%
+  summarise(
+    cor_ideb_iie = cor(iie, ideb, use = "complete.obs")
+  )
+
+```
+
+# Regressão
+
+## Logaritimizando  
+```{r}
+educacao_qr <- educacao_muni %>%
+  mutate(
+    ln_ideb = log(ideb),
+    ln_iie = log(iie),
+    ln_desp_pc = log(desp_educ_pc_defl),
+    ln_inv_pub = log(inv_pub_educ_defl),
+    ln_pib_pc = log(pib_muni_pc)
+  ) %>%
+  filter(
+    # ln de zero é indeterminado!!!!!
+    is.finite(ln_ideb),
+    is.finite(ln_iie),
+    is.finite(ln_desp_pc),
+    is.finite(ln_inv_pub),
+    is.finite(ln_pib_pc)
+  )
+```
+
+## MQO 
+
+```{r}
+mqo <- lm(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc,
+          data = educacao_qr)
+fixo <- plm::plm(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc,
+          data = educacao_qr, index = c("ano", "name_muni"))
+```
+
+```{r}
+# erros robustos
+vcov_robustos <- list(
+  "HC1" = sandwich::vcovHC(mqo, type = "HC1"),
+  "HC1" = plm::vcovHC(fixo, type = "HC1", cluster = c("group", "time"))
+)
+```
+
+```{r}
+testef <- plm::pFtest(fixo, mqo)
+
+tabela_f <- data.frame(
+  `Estatística F` = round(testef$statistic, 3),
+  `p-valor` = format.pval(testef$p.value, digits = 3, eps = .001),
+  row.names = NULL
+)
+
+modelsummary::datasummary_df(tabela_f, output = "latex")
+```
+
+
+```{r}
+tex_table <- modelsummary::modelsummary(
+  list("MQO" = mqo, "EF" = fixo),
+  coef_map = c(
+    "ln_iie" = "Log(IIE)",
+    "ln_inv_pub" = "Log(Investimento)",
+    "ln_desp_pc" = "Log(Despesa)",
+    "ln_pib_pc" = "Log(PIB per capita)",
+    "(Intercept)" = "Intercepto"
+  ),
+  vcov = vcov_robustos,
+  statistic = "conf.int",
+  gof_omit = "AIC|BIC|Log.Lik|F",
+  stars = T,
+  output = "latex"
+)
+
+writeLines(tex_table, "lab_econo_mqo_ef.tex")
+```
+
+## Quantílica
+
+```{r}
+modelo_q10 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, 
+                 tau = 0.1, data = educacao_qr)
+modelo_q25 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, tau = 0.25, data = educacao_qr)
+modelo_q50 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, tau = 0.50, data = educacao_qr)
+modelo_q75 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc + ln_desp_pc, tau = 0.75, data = educacao_qr)
+modelo_q90 <- rq(ln_ideb ~ ln_iie + ln_inv_pub + ln_pib_pc+ ln_desp_pc, tau = 0.9, data = educacao_qr)
+```
+
+```{r}
+tex_table <- modelsummary::modelsummary(
+  list("Quantil 10%" = modelo_q10, 
+       "Quantil 25%" = modelo_q25,
+       "Quantil 50%" = modelo_q50,
+       "Quantil 75%" = modelo_q75, 
+       "Quantil 90%" = modelo_q90),
+  statistic = "conf.int",     # intervalos de confiança
+  coef_map = c("(Intercept)" = "Intercepto",
+               "ln_iie" = "Log(IIE)",
+               "ln_inv_pub" = "Log(Investimento)",
+               "ln_desp_pc" = "Log(Despesa)",
+               "ln_pib_pc" = "Log(PIB per capita)"),
+  gof_omit = "AIC|BIC|Log.Lik", 
+  stars = T,                
+  output = "latex"
+)
+
+writeLines(tex_table, "lab_econo_rq.tex")
+```
+
